@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId (uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string
+    //   - email: string (required)
+    //   - photoURL: string
+    //   - streak: number
+    //   - totalXP: number
+    //   - lastActive: timestamp
+    //   - currentCourseId: string
+    //
+    // Collection: courses
+    // Document ID: courseId
+    // Fields:
+    //   - title: string (required)
+    //   - description: string
+    //   - icon: string
+    //   - isCustom: bool
+    //   - createdBy: string (uid)
+    //
+    // Collection: courses/{courseId}/units
+    // Document ID: unitId
+    // Fields:
+    //   - courseId: string
+    //   - order: number
+    //   - title: string
+    //   - description: string
+    //
+    // Collection: courses/{courseId}/units/{unitId}/lessons
+    // Document ID: lessonId
+    // Fields:
+    //   - unitId: string
+    //   - order: number
+    //   - title: string
+    //   - content: string
+    //   - quiz: list
+    //
+    // Collection: users/{userId}/progress
+    // Document ID: lessonId
+    // Fields:
+    //   - userId: string
+    //   - lessonId: string
+    //   - completedAt: timestamp
+    //   - score: number
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "leandrebernardimail@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string && data.email is string &&
+             (!('streak' in data) || data.streak is number) &&
+             (!('totalXP' in data) || data.totalXP is number) &&
+             (!('league' in data) || data.league is string) &&
+             (!('leaguePoints' in data) || data.leaguePoints is number) &&
+             (!('enrolledCourses' in data) || data.enrolledCourses is list);
+    }
+
+    function isValidCourse(data) {
+      return data.keys().hasAll(['title', 'category']) &&
+             data.title is string && data.title.size() < 100 &&
+             data.category is string &&
+             (!('description' in data) || (data.description is string && data.description.size() < 500));
+    }
+
+    function isValidProgress(data) {
+      return data.keys().hasAll(['userId', 'lessonId']) &&
+             data.userId == request.auth.uid &&
+             data.lessonId is string;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated(); // Allow reading others for leagues
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+
+      match /progress/{lessonId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create, update: if isOwner(userId) && isValidProgress(request.resource.data);
+      }
+    }
+
+    match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCourse(request.resource.data);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.createdBy == request.auth.uid);
+
+      match /units/{unitId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/courses/$(courseId)).data.createdBy == request.auth.uid);
+
+        match /lessons/{lessonId} {
+          allow read: if isAuthenticated();
+          allow write: if isAdmin() || (isAuthenticated() && get(/databases/$(database)/documents/courses/$(courseId)).data.createdBy == request.auth.uid);
+        }
+      }
+    }
+  }
+}

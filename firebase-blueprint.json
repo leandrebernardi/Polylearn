@@ -1,0 +1,98 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user progress, streaks, and preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "streak": { "type": "integer" },
+        "totalXP": { "type": "integer" },
+        "league": { "type": "string", "enum": ["Bronze", "Silver", "Gold", "Sapphire", "Ruby", "Emerald", "Amethyst", "Pearl", "Obsidian", "Diamond"] },
+        "leaguePoints": { "type": "integer" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "enrolledCourses": { "type": "array", "items": { "type": "string" } },
+        "isPremium": { "type": "boolean" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A learning path for a specific subject.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string", "enum": ["Language", "Programming", "Science", "History", "Other"] },
+        "description": { "type": "string" },
+        "icon": { "type": "string" },
+        "isCustom": { "type": "boolean" },
+        "createdBy": { "type": "string" },
+        "enrolledCount": { "type": "integer" }
+      },
+      "required": ["title", "category"]
+    },
+    "Unit": {
+      "title": "Unit",
+      "description": "A group of lessons within a course.",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "order": { "type": "integer" },
+        "title": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["courseId", "order", "title"]
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A single learning unit with content and quiz.",
+      "type": "object",
+      "properties": {
+        "unitId": { "type": "string" },
+        "order": { "type": "integer" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "quiz": { "type": "array" }
+      },
+      "required": ["unitId", "order", "title"]
+    },
+    "UserProgress": {
+      "title": "User Progress",
+      "description": "Tracks which lessons a user has completed.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "lessonId": { "type": "string" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "score": { "type": "integer" }
+      },
+      "required": ["userId", "lessonId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and progress metadata."
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Available learning paths."
+    },
+    "/courses/{courseId}/units/{unitId}": {
+      "schema": "Unit",
+      "description": "Units within a course."
+    },
+    "/courses/{courseId}/units/{unitId}/lessons/{lessonId}": {
+      "schema": "Lesson",
+      "description": "Lessons within a unit."
+    },
+    "/users/{userId}/progress/{lessonId}": {
+      "schema": "UserProgress",
+      "description": "Tracks lesson completion for a user."
+    }
+  }
+}
