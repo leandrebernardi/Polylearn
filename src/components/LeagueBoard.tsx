@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Trophy, Shield, Flame, User as UserIcon, Bot } from 'lucide-react';
+import { Trophy, Shield, Flame, User as UserIcon, Bot, ChevronRight } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export type League = 'Bronze' | 'Silver' | 'Gold' | 'Sapphire' | 'Ruby' | 'Emerald' | 'Amethyst' | 'Pearl' | 'Obsidian' | 'Diamond';
@@ -36,6 +36,8 @@ export const LeagueBoard: React.FC<LeagueBoardProps> = ({ currentLeague, partici
   // Sort participants by points
   const sortedParticipants = [...participants].sort((a, b) => b.leaguePoints - a.leaguePoints);
 
+  const userRank = sortedParticipants.findIndex(p => p.uid === currentUserUid) + 1;
+
   return (
     <div className="bg-white rounded-3xl border-2 border-slate-200 shadow-sm overflow-hidden">
       <div className={cn("p-6 border-b-2 flex items-center justify-between", LEAGUE_COLORS[currentLeague])}>
@@ -43,22 +45,24 @@ export const LeagueBoard: React.FC<LeagueBoardProps> = ({ currentLeague, partici
           <Shield className="w-8 h-8" />
           <div>
             <h3 className="text-xl font-black uppercase tracking-tight">{currentLeague} League</h3>
-            <p className="text-xs opacity-70 font-bold">Top 10 advance to next league</p>
+            {userRank > 0 && (
+              <p className="text-xs opacity-70 font-bold">You are currently #{userRank}</p>
+            )}
           </div>
         </div>
         <Trophy className="w-6 h-6 opacity-50" />
       </div>
 
-      <div className="divide-y divide-slate-100">
+      <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-100 scrollbar-hide">
         {sortedParticipants.map((p, idx) => {
           const isCurrentUser = p.uid === currentUserUid;
           const isTop3 = idx < 3;
           const isPromotionZone = idx < 10;
-          const isDemotionZone = idx > 25;
 
           return (
             <motion.div
               key={p.uid}
+              id={isCurrentUser ? "league-me" : undefined}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: idx * 0.05 }}
@@ -106,8 +110,17 @@ export const LeagueBoard: React.FC<LeagueBoardProps> = ({ currentLeague, partici
         })}
       </div>
 
-      <div className="p-4 bg-slate-50 text-center">
-        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Ends in 3 days 14 hours</p>
+      <div className="p-4 bg-slate-50 flex items-center justify-between">
+        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Ends in 3 days</p>
+        {currentUserUid && sortedParticipants.findIndex(p => p.uid === currentUserUid) > 5 && (
+          <button 
+            onClick={() => document.getElementById('league-me')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            className="text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+          >
+            Jump to Me
+            <ChevronRight className="w-3 h-3" />
+          </button>
+        )}
       </div>
     </div>
   );

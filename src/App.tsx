@@ -65,7 +65,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [view, setView] = useState<'landing' | 'dashboard' | 'explore' | 'leagues' | 'path' | 'lesson' | 'placement'>('landing');
+  const [view, setView] = useState<'landing' | 'dashboard' | 'explore' | 'leagues' | 'path' | 'lesson' | 'placement' | 'video-call'>('landing');
   
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
@@ -300,6 +300,14 @@ export default function App() {
         try {
           const suggestions = await generateTrendingSubjects();
           setSuggestedCourses(suggestions);
+          
+          // Automatically add these suggestions to the global courses list if they don't exist
+          for (const suggestion of suggestions) {
+            const exists = allCourses.some(c => c.title.toLowerCase() === suggestion.title.toLowerCase());
+            if (!exists) {
+              await createCourse(suggestion.title, suggestion.category, suggestion.description, suggestion.icon, false);
+            }
+          }
         } catch (error) {
           console.error("Error fetching suggestions:", error);
         } finally {
@@ -308,7 +316,7 @@ export default function App() {
       };
       fetchSuggestions();
     }
-  }, [view]);
+  }, [view, allCourses]);
 
   const handleSurpriseMe = async () => {
     setLoadingSuggestions(true);
@@ -316,7 +324,9 @@ export default function App() {
       const suggestions = await generateTrendingSubjects();
       if (suggestions.length > 0) {
         const suggestion = suggestions[0];
-        await createCourse(suggestion.title);
+        // Just add it to the global list and stay on the explore page
+        await createCourse(suggestion.title, suggestion.category, suggestion.description, suggestion.icon, false);
+        alert(`AI has created a new course: ${suggestion.title}! You can find it in the list below.`);
       }
     } catch (error) {
       console.error("Error with surprise me:", error);
@@ -325,24 +335,26 @@ export default function App() {
     }
   };
 
-  const createCourse = async (subject: string) => {
+  const createCourse = async (subject: string, category: string = 'Other', description?: string, icon: string = '✨', autoEnroll: boolean = true) => {
     if (!user) return;
     const courseId = subject.replace(/\s+/g, '_').toLowerCase() + '_' + Date.now();
     const newCourse = {
       id: courseId,
       title: subject,
-      category: 'Other',
-      description: `A custom course about ${subject}`,
-      icon: '✨',
+      category: category,
+      description: description || `A custom course about ${subject}`,
+      icon: icon,
       isCustom: true,
       createdBy: user.uid,
-      enrolledCount: 1
+      enrolledCount: autoEnroll ? 1 : 0
     };
 
     try {
       await setDoc(doc(db, 'courses', courseId), newCourse);
-      await handleEnrollCourse(newCourse);
-      handleSelectCourse(newCourse);
+      if (autoEnroll) {
+        await handleEnrollCourse(newCourse);
+        handleSelectCourse(newCourse);
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `courses/${courseId}`);
     }
@@ -375,6 +387,10 @@ export default function App() {
       </div>
     );
   }
+
+  const userRank = leagueParticipants
+    .sort((a, b) => b.leaguePoints - a.leaguePoints)
+    .findIndex(p => p.uid === user?.uid) + 1;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -420,6 +436,15 @@ export default function App() {
                     <Trophy className="w-5 h-5" />
                     <span>Leagues</span>
                   </button>
+                  {userProfile?.isPremium && (
+                    <button 
+                      onClick={() => setView('video-call')}
+                      className={cn("px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-colors", view === 'video-call' ? "bg-emerald-50 text-emerald-600" : "text-slate-500 hover:bg-slate-50")}
+                    >
+                      <Video className="w-5 h-5" />
+                      <span>Video Call</span>
+                    </button>
+                  )}
                 </nav>
 
                 <div className="hidden sm:flex items-center gap-4 px-4 py-1 bg-slate-100 rounded-full">
@@ -431,6 +456,12 @@ export default function App() {
                     <Trophy className="w-4 h-4" />
                     <span>{userProfile?.totalXP || 0} XP</span>
                   </div>
+                  {userRank > 0 && (
+                    <div className="flex items-center gap-1 text-emerald-600 font-bold border-l border-slate-200 pl-4">
+                      <Shield className="w-4 h-4" />
+                      <span>#{userRank}</span>
+                    </div>
+                  )}
                 </div>
 
                 <button 
@@ -497,10 +528,18 @@ export default function App() {
             >
               <div className="lg:col-span-2 space-y-8">
                 <div className="space-y-4">
-                  <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                    <BookOpen className="w-6 h-6 text-indigo-600" />
-                    My Courses
-                  </h2>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+                      <BookOpen className="w-6 h-6 text-indigo-600" />
+                      My Courses
+                    </h2>
+                    <button 
+                      onClick={() => setView('leagues')}
+                      className="text-xs font-black text-indigo-600 uppercase tracking-widest hover:underline"
+                    >
+                      View Full League
+                    </button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {userProfile?.enrolledCourses?.length > 0 ? (
                       allCourses.filter(c => userProfile.enrolledCourses.includes(c.id)).map(course => (
@@ -576,12 +615,22 @@ export default function App() {
                   <p className="text-sm text-slate-500 leading-relaxed">
                     Unlock video calls and advanced AI tutoring with PolyLearn Premium.
                   </p>
-                  <button 
-                    onClick={() => setIsPremiumModalOpen(true)}
-                    className="w-full py-3 bg-amber-400 text-white rounded-xl font-black shadow-[0_4px_0_0_rgba(217,119,6,1)] hover:translate-y-1 hover:shadow-[0_0_0_0_rgba(217,119,6,1)] transition-all"
-                  >
-                    UPGRADE NOW
-                  </button>
+                  {userProfile?.isPremium ? (
+                    <button 
+                      onClick={() => setView('video-call')}
+                      className="w-full py-3 bg-emerald-500 text-white rounded-xl font-black shadow-[0_4px_0_0_rgba(5,150,105,1)] hover:translate-y-1 hover:shadow-[0_0_0_0_rgba(5,150,105,1)] transition-all flex items-center justify-center gap-2"
+                    >
+                      <Video className="w-5 h-5" />
+                      START VIDEO CALL
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => setIsPremiumModalOpen(true)}
+                      className="w-full py-3 bg-amber-400 text-white rounded-xl font-black shadow-[0_4px_0_0_rgba(217,119,6,1)] hover:translate-y-1 hover:shadow-[0_0_0_0_rgba(217,119,6,1)] transition-all"
+                    >
+                      UPGRADE NOW
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -818,6 +867,78 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </motion.div>
+          )}
+
+          {view === 'video-call' && (
+            <motion.div 
+              key="video-call"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="max-w-4xl mx-auto h-[70vh] bg-slate-900 rounded-[40px] overflow-hidden shadow-2xl relative flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 bg-slate-800/50 flex items-center justify-between border-b border-slate-700/50">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center">
+                    <Mascot size="sm" mood="excited" />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-black">AI Tutor Call</h3>
+                    <p className="text-emerald-400 text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+                      <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                      Live Connection
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setView('dashboard')}
+                  className="px-6 py-2 bg-rose-500 text-white rounded-xl font-black text-sm shadow-[0_4px_0_0_rgba(225,29,72,1)] hover:translate-y-1 hover:shadow-none transition-all"
+                >
+                  END CALL
+                </button>
+              </div>
+
+              {/* Video Area */}
+              <div className="flex-1 relative grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+                {/* AI Tutor Video */}
+                <div className="bg-slate-800 rounded-3xl relative overflow-hidden flex items-center justify-center border-2 border-slate-700">
+                  <div className="absolute top-4 left-4 bg-slate-900/50 px-3 py-1 rounded-lg text-[10px] font-black text-white uppercase tracking-widest">AI Tutor</div>
+                  <motion.div
+                    animate={{ 
+                      scale: [1, 1.05, 1],
+                      rotate: [0, 2, -2, 0]
+                    }}
+                    transition={{ repeat: Infinity, duration: 4 }}
+                  >
+                    <Mascot size="lg" mood="excited" />
+                  </motion.div>
+                </div>
+
+                {/* User Video (Simulated) */}
+                <div className="bg-slate-800 rounded-3xl relative overflow-hidden flex items-center justify-center border-2 border-slate-700">
+                  <div className="absolute top-4 left-4 bg-slate-900/50 px-3 py-1 rounded-lg text-[10px] font-black text-white uppercase tracking-widest">You</div>
+                  <div className="text-slate-600 flex flex-col items-center gap-4">
+                    <div className="w-20 h-20 rounded-full bg-slate-700 flex items-center justify-center">
+                      <UserIcon className="w-10 h-10" />
+                    </div>
+                    <p className="text-xs font-bold uppercase tracking-widest">Camera Off</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="p-8 bg-slate-800/50 border-t border-slate-700/50 flex items-center justify-center gap-6">
+                <button className="w-14 h-14 rounded-full bg-slate-700 text-white flex items-center justify-center hover:bg-slate-600 transition-colors">
+                  <Video className="w-6 h-6" />
+                </button>
+                <button className="w-14 h-14 rounded-full bg-slate-700 text-white flex items-center justify-center hover:bg-slate-600 transition-colors">
+                  <MessageSquare className="w-6 h-6" />
+                </button>
+                <button className="w-14 h-14 rounded-full bg-slate-700 text-white flex items-center justify-center hover:bg-slate-600 transition-colors">
+                  <Settings className="w-6 h-6" />
+                </button>
+              </div>
             </motion.div>
           )}
 
